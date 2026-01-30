@@ -42,6 +42,88 @@ If the backend responds with 401 Unauthorized:
 
 ⸻
 
+User Account Context (Post-Login Global State)
+
+The application maintains a User Account Context derived from authentication, used to control domain-scoped behavior, permissions, and visibility across the entire app.
+
+This context is not UI state and not page state.
+It represents immutable account information for the currently authenticated user.
+
+Source of Truth
+
+• Endpoint:
+GET /users/api/management/users/{userId}
+
+• The userId is obtained from:
+/api/auth/me → { hasToken, userId }
+
+• The response includes (non-exhaustive):
+• domain
+• role
+• email
+• isActive
+• audit fields
+
+Architectural Rules (STRICT)
+
+• The User Account Context must be loaded once post-login
+• It must be managed exclusively via TanStack Query
+• It must be globally available for the entire app
+• It must be read-only (never modifiable by the UI)
+• It must be cleared on logout
+• It must be reloaded on full page refresh
+
+❌ Forbidden:
+• React Context for user account data
+• Redux / Zustand / custom global stores
+• localStorage / sessionStorage
+• Passing domain or role via props
+• Fetching user account data inside feature pages
+
+Query Conventions
+
+• The User Account Context uses a dedicated, stable query key
+• Example (reference):
+• [‘mgmt’, ‘current-user’]
+
+• This query represents application context, not a CRUD resource
+• It must not follow the paginated resource key pattern
+
+Bootstrap Requirement (MANDATORY)
+
+• The User Account Context query must be mounted at application bootstrap
+• Typically inside:
+• the main authenticated layout
+• or a global Providers / App initializer component
+
+• The bootstrap must always be mounted
+• It must never be conditional
+• Removing or relocating it is considered a breaking change
+
+Dependency Rule (VERY IMPORTANT)
+
+All business queries (e.g. Users, Groups, Roles, Permissions):
+
+• Must depend on the User Account Context
+• Must not execute until the current user data is available
+• Must read domain, role, and related fields from this context
+• Must never accept domain or role from user input
+• Business queries must be disabled or deferred until the User Account Context is resolved
+
+Reload Behavior (Expected)
+
+On full page reload:
+
+• TanStack Query cache is cleared
+• Authentication cookies remain
+• /api/auth/me is called again
+• The User Account Context is refetched
+• All feature queries resume correctly (including pagination and URL state)
+
+This behavior is intentional and required for correctness and security.
+
+⸻
+
 Next.js Conventions
 • App Router only
 • Server components used for shells and routing
