@@ -39,7 +39,9 @@ export async function forwardToBackend(req: Request, opts: ForwardOptions) {
   if (token) headers.set("authorization", `Bearer ${token}`);
 
   const method = req.method.toUpperCase();
-  const hasBody = !["GET", "HEAD"].includes(method);
+  // DELETE senza body: alcuni backend/APIM danno 500 se invii body vuoto
+  const hasBody =
+    !["GET", "HEAD", "DELETE"].includes(method);
 
   const res = await fetch(targetUrl, {
     method,
@@ -54,6 +56,11 @@ export async function forwardToBackend(req: Request, opts: ForwardOptions) {
       { message: "Unauthorized (missing token)" },
       { status: 401 },
     );
+  }
+
+  // 204 No Content: non leggere il body (stream vuoto può dare errore) e ritorna senza body
+  if (res.status === 204) {
+    return new Response(null, { status: 204 });
   }
 
   // Ritorna esattamente status + body (senza perdere content-type)

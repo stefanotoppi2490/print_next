@@ -169,3 +169,4 @@ Come deve venire:
 - nel caso di modifica del gruppo, uscirà sempre popup con relativo form.
 - il tasto per aggiungere un gruppo è sopra la tabella principale e anche questo farà comparire un popup con relativo form
 - il tasto elimina deve chiedere conferma prima di procedere all'eliminazione del gruppo.
+- Le api per il recupero di tutti gli utenti sono gia presenti all interno del progetto
