@@ -41,8 +41,8 @@ export async function POST(req: Request) {
   // Valida e mappa risposta
   const mapped = AuthMapper.assertLoginResponse(data);
 
-  // Salva token + refreshToken in cookie HttpOnly (token mai al client)
-  await setAuthCookies(mapped.token, mapped.refreshToken);
+  // Salva token + refreshToken + userId in cookie HttpOnly (token mai al client)
+  await setAuthCookies(mapped.token, mapped.refreshToken, mapped.userId);
 
   return Response.json({
     ok: true,

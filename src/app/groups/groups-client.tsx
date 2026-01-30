@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { clientFetch } from "@/lib/http/clientFetch";
 import {
@@ -11,13 +10,13 @@ import {
 } from "@/lib/bff/dtos/groups";
 import GroupUpsertModal from "@/app/groups/group-upsert-modal";
 import GroupMembersModal from "@/app/groups/group-members-modal";
+import { useCurrentUser } from "@/lib/query/currentUser";
 
-export default function GroupsClient({ domain }: { domain: string }) {
-  const router = useRouter();
-  const sp = useSearchParams();
+export default function GroupsClient() {
   const qc = useQueryClient();
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+  const domain = currentUser?.domain ?? null;
 
-  const [domainInput, setDomainInput] = useState(domain);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [editingGroup, setEditingGroup] = useState<UserGroupDto | null>(null);
@@ -29,6 +28,7 @@ export default function GroupsClient({ domain }: { domain: string }) {
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
+      if (!domain) throw new Error("Dominio non disponibile");
       const qs = new URLSearchParams();
       qs.set("domain", domain);
 
@@ -38,19 +38,10 @@ export default function GroupsClient({ domain }: { domain: string }) {
       const json = (await res.json()) as UserGroupListDto;
       return GroupsMapper.assertUserGroupList(json);
     },
+    enabled: !!domain,
   });
 
   const groups: UserGroupDto[] = Array.isArray(data) ? data : [];
-
-  function applyDomain() {
-    const params = new URLSearchParams(sp.toString());
-    if (domainInput.trim()) {
-      params.set("domain", domainInput.trim());
-    } else {
-      params.delete("domain");
-    }
-    router.push(`/groups?${params.toString()}`);
-  }
 
   const deleteGroup = useMutation({
     mutationFn: async (groupId: string) => {
@@ -68,6 +59,15 @@ export default function GroupsClient({ domain }: { domain: string }) {
     },
   });
 
+  if (userLoading || (currentUser === undefined && !domain))
+    return <div style={{ marginTop: 12 }}>Caricamento...</div>;
+  if (!domain)
+    return (
+      <div style={{ marginTop: 12, color: "#666" }}>
+        Dominio non disponibile. Accedi per vedere i gruppi.
+      </div>
+    );
+
   return (
     <div style={{ marginTop: 12 }}>
       <div
@@ -79,14 +79,6 @@ export default function GroupsClient({ domain }: { domain: string }) {
           flexWrap: "wrap",
         }}
       >
-        <input
-          value={domainInput}
-          onChange={(e) => setDomainInput(e.target.value)}
-          placeholder="Domain (es. wtgprint.com)"
-          style={{ padding: 8, width: 240 }}
-        />
-        <button onClick={applyDomain}>Applica domain</button>
-
         <button
           onClick={() => {
             setModalMode("create");
@@ -266,8 +258,7 @@ export default function GroupsClient({ domain }: { domain: string }) {
 
           {groups.length === 0 && (
             <p style={{ marginTop: 16, color: "#666" }}>
-              Nessun gruppo per il domain selezionato. Cambia domain o aggiungi
-              un gruppo.
+              Nessun gruppo per il tuo dominio. Aggiungi un gruppo.
             </p>
           )}
         </>
