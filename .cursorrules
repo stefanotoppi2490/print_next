@@ -39,10 +39,11 @@ AUTH & COOKIES
   - clears cookies and returns { ok:true }
   - optionally implement GET for manual browser testing.
 - /api/auth/me:
-  - returns minimal status: { hasToken: boolean }.
+  - returns minimal status: { hasToken: boolean, userId?: string|null } when needed for bootstrapping.
 
 Token lifetime/invalid token handling:
 - In forwardToBackend: if backend responds 401, call clearAuthCookies().
+- After 401 on the client, redirect to /login.
 
 ──────────────────────────────────────────────────────────────────────────────
 BFF FORWARDING RULES (src/lib/bff/forward.ts)
@@ -79,7 +80,9 @@ API ROUTE DESIGN (app/api/**)
 ──────────────────────────────────────────────────────────────────────────────
 - Create a BFF route mirroring backend capability:
   - GET/POST/PUT on /api/management/users -> forwardToBackend('/users/api/management/users')
-  - DELETE on /api/management/users/[userId] -> forwardToBackend(`/users/api/management/users/${userId}`)
+  - /api/management/users/[userId] supports:
+    - GET -> forwardToBackend(`/users/api/management/users/${userId}`)
+    - DELETE -> forwardToBackend(`/users/api/management/users/${userId}`)
 - API routes should be thin: validation + DTO mapping if needed; forwarding done by forward.ts.
 - Return backend errors as-is (status + body) to allow UI to show messages.
 
@@ -96,22 +99,64 @@ DTOs & MAPPERS (READABILITY)
 - Do NOT introduce heavy libs (zod) unless explicitly requested.
 
 ──────────────────────────────────────────────────────────────────────────────
-TANSTACK QUERY (v5) RULES
+USER ACCOUNT CONTEXT (POST-LOGIN GLOBAL STATE) — STRICT
+──────────────────────────────────────────────────────────────────────────────
+- The app maintains a User Account Context derived from authentication:
+  - domain, role, email, isActive, etc.
+- Source of truth:
+  - GET /users/api/management/users/{userId}
+  - userId comes from /api/auth/me (token is server-only in HttpOnly cookies).
+- Manage this context ONLY via TanStack Query (no React Context, no Redux/Zustand, no localStorage/sessionStorage).
+- It is READ-ONLY and must be globally available for the entire app session.
+- It must be cleared on logout and refetched on full page reload.
+
+Query key (dedicated and stable):
+- ['mgmt', 'current-user']
+
+Bootstrap requirement (MANDATORY):
+- Mount the current-user query at app bootstrap (main authenticated layout / global Providers).
+- Bootstrap must ALWAYS be mounted and NEVER be conditional.
+
+Dependency rule (VERY IMPORTANT):
+- All business queries (users, groups, roles, permissions, etc.) MUST depend on current-user.
+- Business queries MUST NOT execute until current-user is resolved (domain available).
+- Never accept domain/role from user input or props.
+
+──────────────────────────────────────────────────────────────────────────────
+TANSTACK QUERY (v5) RULES — STRICT
 ──────────────────────────────────────────────────────────────────────────────
 - Use TanStack Query v5 conventions:
   - keepPreviousData is NOT an option on useQuery.
   - Use placeholderData: keepPreviousData instead.
-- Query keys:
-  - Use stable, descriptive prefixes:
-    - ['management-users', { pageSize, currentPage }]
-  - Invalidate all pages with:
-    - invalidateQueries({ queryKey: ['management-users'] })
-- UseQuery loading indicators:
-  - isLoading = first load
-  - isFetching = background refresh or page changes
+
+Query Key Convention (STRICT):
+- All CRUD resource query keys MUST follow:
+  ['mgmt', '<resource>', params]
+
+Examples:
+- ['mgmt', 'users', { pageSize, currentPage }]
+- ['mgmt', 'roles', { pageSize, currentPage }]
+- ['mgmt', 'customers', { pageSize, currentPage }]
+
+Invalidation Rules (STRICT):
+- Invalidate by resource prefix only:
+  invalidateQueries({ queryKey: ['mgmt', '<resource>'] })
+
+This invalidates all pages and filters for that resource and nothing else.
+
+Forbidden query keys:
+- ['management']
+- ['mgmt']  (alone)
+- ['users'] (alone)
+- ['management-users']
+- Any hardcoded or generic key
+
+UseQuery loading indicators:
+- isLoading = first load
+- isFetching = background refresh or page changes
 
 Client fetch:
-- Create src/lib/http/clientFetch.ts:
+- Use src/lib/http/clientFetch.ts for calling BFF endpoints from client components:
   - wraps fetch
   - if status 401 -> redirect to /login
 - Client components must use clientFetch (not raw fetch) for BFF endpoints.
@@ -144,7 +189,8 @@ CRUD UX RULES (MODALS)
 - Delete:
   - Show confirmation popup before calling DELETE.
   - Call DELETE /api/management/users/[userId]
-  - On success, invalidate users queries.
+  - On success, invalidate users queries using:
+    invalidateQueries({ queryKey: ['mgmt', 'users'] })
 
 ──────────────────────────────────────────────────────────────────────────────
 STYLE & CODING STANDARDS
@@ -158,6 +204,7 @@ STYLE & CODING STANDARDS
   2) BFF route(s)
   3) Client UI with TanStack Query hooks
   4) Auth/401 behavior tested
+  5) Ensure business queries depend on ['mgmt','current-user'] when domain/role is required
 
 ──────────────────────────────────────────────────────────────────────────────
 SECURITY / SAFETY
