@@ -17,6 +17,7 @@ export default function GroupsClient() {
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   const domain = currentUser?.domain ?? null;
 
+  const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [editingGroup, setEditingGroup] = useState<UserGroupDto | null>(null);
@@ -42,6 +43,20 @@ export default function GroupsClient() {
   });
 
   const groups: UserGroupDto[] = Array.isArray(data) ? data : [];
+
+  const filteredGroups = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return groups;
+    return groups.filter((g) => {
+      const tipo = g.isDomainUsersGroup ? "domain users" : "custom";
+      return (
+        g.name.toLowerCase().includes(needle) ||
+        (g.description ?? "").toLowerCase().includes(needle) ||
+        g.domain.toLowerCase().includes(needle) ||
+        tipo.includes(needle)
+      );
+    });
+  }, [groups, search]);
 
   const deleteGroup = useMutation({
     mutationFn: async (groupId: string) => {
@@ -79,6 +94,14 @@ export default function GroupsClient() {
           flexWrap: "wrap",
         }}
       >
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cerca (nome, descrizione, domain, tipo)..."
+          style={{ padding: 8, width: 320 }}
+          aria-label="Cerca gruppi"
+        />
         <button
           onClick={() => {
             setModalMode("create");
@@ -174,7 +197,7 @@ export default function GroupsClient() {
             </thead>
 
             <tbody>
-              {groups.map((g) => (
+              {filteredGroups.map((g) => (
                 <tr key={g.id}>
                   <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>
                     {g.name}
@@ -256,9 +279,11 @@ export default function GroupsClient() {
             </pre>
           )}
 
-          {groups.length === 0 && (
+          {filteredGroups.length === 0 && (
             <p style={{ marginTop: 16, color: "#666" }}>
-              Nessun gruppo per il tuo dominio. Aggiungi un gruppo.
+              {groups.length === 0
+                ? "Nessun gruppo per il tuo dominio. Aggiungi un gruppo."
+                : "Nessun gruppo corrisponde alla ricerca."}
             </p>
           )}
         </>
